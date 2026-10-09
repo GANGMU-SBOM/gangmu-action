@@ -1,0 +1,159 @@
+name: gangmu
+description: >-
+  Build an SBOM (CycloneDX) and a cryptographic BOM for embedded C/C++ firmware, write a
+  post-quantum readiness summary, and optionally fail the job on quantum-vulnerable or
+  legacy algorithms.
+author: GANGMU-SBOM
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Directory to scan, relative to the workspace.
+    default: "."
+  compile-db:
+    description: compile_commands.json from the real build. Without it the CBOM lists what the tree contains, not what ships.
+    default: ""
+  link-map:
+    description: Linker map file from the real build.
+    default: ""
+  output-dir:
+    description: Where the reports are written, relative to the workspace.
+    default: gangmu-out
+  sbom:
+    description: Write the SBOM (sbom.cdx.json).
+    default: "true"
+  cbom:
+    description: Write the cryptographic BOM (cbom.cdx.json) and the post-quantum readiness summary (pqc-readiness.md).
+    default: "true"
+  fail-on:
+    description: >-
+      Space-separated classes that fail the job: quantum-vulnerable and/or legacy.
+      Empty never fails on algorithms.
+    default: ""
+  upload:
+    description: Upload the reports as a workflow artifact.
+    default: "true"
+  artifact-name:
+    description: Name of the uploaded artifact.
+    default: gangmu-reports
+  install-spec:
+    description: >-
+      What pip installs. The default is the latest gangmu-sbom on PyPI. The readiness
+      summary needs gangmu 0.9 or later; use a pinned version ("gangmu-sbom==0.9.0")
+      for reproducible runs.
+    default: gangmu-sbom
+  extra-packages:
+    description: Extra pip packages to install, space-separated (for example a CBOM rule pack).
+    default: ""
+  python-version:
+    description: Python version for actions/setup-python.
+    default: "3.12"
+
+outputs:
+  output-dir:
+    description: Directory holding the reports.
+    value: ${{ steps.paths.outputs.dir }}
+  sbom-file:
+    description: Path of the SBOM, empty when it was not written.
+    value: ${{ steps.scan.outputs.sbom }}
+  cbom-file:
+    description: Path of the CBOM, empty when it was not written.
+    value: ${{ steps.cbom.outputs.cbom }}
+  readiness-file:
+    description: Path of the post-quantum readiness summary, empty when it was not written.
+    value: ${{ steps.cbom.outputs.readiness }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install gangmu
+      shell: bash
+      env:
+        INSTALL_SPEC: ${{ inputs.install-spec }}
+        EXTRA: ${{ inputs.extra-packages }}
+      run: |
+        # word splitting is intended: both inputs are lists of pip requirements
+        # shellcheck disable=SC2086
+        python -m pip install --quiet $INSTALL_SPEC $EXTRA
+        gangmu --version
+
+    - name: Resolve paths
+      id: paths
+      shell: bash
+      env:
+        OUT: ${{ inputs.output-dir }}
+      run: |
+        mkdir -p "$OUT"
+        echo "dir=$OUT" >> "$GITHUB_OUTPUT"
+
+    - name: SBOM
+      id: scan
+      if: inputs.sbom == 'true'
+      shell: bash
+      env:
+        ROOT: ${{ inputs.path }}
+        COMPILE_DB: ${{ inputs.compile-db }}
+        LINK_MAP: ${{ inputs.link-map }}
+        OUT: ${{ steps.paths.outputs.dir }}
+      run: |
+        args=("$ROOT" --format cyclonedx -o "$OUT/sbom.cdx.json")
+        [ -n "$COMPILE_DB" ] && args+=(--compile-db "$COMPILE_DB")
+        [ -n "$LINK_MAP" ] && args+=(--link-map "$LINK_MAP")
+        gangmu scan "${args[@]}"
+        echo "sbom=$OUT/sbom.cdx.json" >> "$GITHUB_OUTPUT"
+
+    - name: CBOM and post-quantum readiness
+      id: cbom
+      if: inputs.cbom == 'true'
+      shell: bash
+      env:
+        ROOT: ${{ inputs.path }}
+        COMPILE_DB: ${{ inputs.compile-db }}
+        LINK_MAP: ${{ inputs.link-map }}
+        OUT: ${{ steps.paths.outputs.dir }}
+      run: |
+        common=("$ROOT")
+        [ -n "$COMPILE_DB" ] && common+=(--compile-db "$COMPILE_DB")
+        [ -n "$LINK_MAP" ] && common+=(--link-map "$LINK_MAP")
+        gangmu cbom "${common[@]}" --format cyclonedx -o "$OUT/cbom.cdx.json"
+        echo "cbom=$OUT/cbom.cdx.json" >> "$GITHUB_OUTPUT"
+        if gangmu cbom "${common[@]}" --format readiness -o "$OUT/pqc-readiness.md"; then
+          echo "readiness=$OUT/pqc-readiness.md" >> "$GITHUB_OUTPUT"
+          cat "$OUT/pqc-readiness.md" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "::warning::this gangmu has no --format readiness (needs 0.9 or later); skipped the summary"
+        fi
+
+    - name: Fail on algorithms
+      if: inputs.cbom == 'true' && inputs.fail-on != ''
+      shell: bash
+      env:
+        ROOT: ${{ inputs.path }}
+        COMPILE_DB: ${{ inputs.compile-db }}
+        LINK_MAP: ${{ inputs.link-map }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        args=("$ROOT" --format table -o /dev/null)
+        [ -n "$COMPILE_DB" ] && args+=(--compile-db "$COMPILE_DB")
+        [ -n "$LINK_MAP" ] && args+=(--link-map "$LINK_MAP")
+        for class in $FAIL_ON; do
+          case "$class" in
+            quantum-vulnerable|legacy) args+=(--fail-on "$class") ;;
+            *) echo "::error::fail-on: unknown class '$class' (use quantum-vulnerable and/or legacy)"; exit 2 ;;
+          esac
+        done
+        gangmu cbom "${args[@]}"
+
+    - name: Upload reports
+      if: always() && inputs.upload == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.paths.outputs.dir }}
+        if-no-files-found: ignore

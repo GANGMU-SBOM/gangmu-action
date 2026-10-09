@@ -1,0 +1,61 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  reports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: gangmu
+        uses: ./
+        with:
+          path: tests/fixture
+          # gangmu 0.9 is not on PyPI yet; build from main until it is
+          install-spec: git+https://github.com/GANGMU-SBOM/gangmu.git@main
+          artifact-name: reports-ok
+      - name: the reports exist and say what the fixture contains
+        env:
+          CBOM: ${{ steps.gangmu.outputs.cbom-file }}
+          READINESS: ${{ steps.gangmu.outputs.readiness-file }}
+          SBOM: ${{ steps.gangmu.outputs.sbom-file }}
+        run: |
+          test -s "$SBOM"
+          test -s "$CBOM"
+          grep -q "RSA" "$CBOM"
+          grep -q "Post-quantum readiness" "$READINESS"
+          grep -q "Migrate" "$READINESS"
+
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: gate
+        uses: ./
+        continue-on-error: true
+        with:
+          path: tests/fixture
+          install-spec: git+https://github.com/GANGMU-SBOM/gangmu.git@main
+          fail-on: quantum-vulnerable
+          upload: "false"
+      - name: RSA in the fixture must fail the gate
+        env:
+          OUTCOME: ${{ steps.gate.outcome }}
+        run: test "$OUTCOME" = "failure"
+
+  bad-class:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: bad
+        uses: ./
+        continue-on-error: true
+        with:
+          path: tests/fixture
+          install-spec: git+https://github.com/GANGMU-SBOM/gangmu.git@main
+          fail-on: nonsense
+          upload: "false"
+      - env:
+          OUTCOME: ${{ steps.bad.outcome }}
+        run: test "$OUTCOME" = "failure"
