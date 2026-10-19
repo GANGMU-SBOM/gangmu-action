@@ -41,7 +41,7 @@ inputs:
   install-spec:
     description: >-
       What pip installs. The default is the latest gangmu-sbom on PyPI. The readiness
-      summary needs gangmu 0.9 or later; use a pinned version ("gangmu-sbom==0.9.0")
+      summary needs gangmu 0.9 or later; use a pinned version ("gangmu-sbom==0.12.0")
       for reproducible runs.
     default: gangmu-sbom
   extra-packages:

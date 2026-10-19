@@ -12,7 +12,7 @@ jobs:
         uses: ./
         with:
           path: tests/fixture
-          # gangmu 0.9 is not on PyPI yet; build from main until it is
+          # These jobs run against gangmu's main branch on purpose, to catch a breaking change before it is released
           install-spec: git+https://github.com/GANGMU-SBOM/gangmu.git@main
           artifact-name: reports-ok
       - name: the reports exist and say what the fixture contains

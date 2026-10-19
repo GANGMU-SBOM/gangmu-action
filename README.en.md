@@ -17,7 +17,7 @@ Inputs: `path`, `compile-db`, `link-map`, `sbom`, `cbom`, `fail-on` (space-separ
 Notes:
 
 * The readiness summary needs gangmu 0.9 or later; an older gangmu skips it with a warning and still writes the SBOM and CBOM.
-* PyPI currently has gangmu-sbom 0.8.0. Until 0.9.0 is published, set `install-spec: git+https://github.com/GANGMU-SBOM/gangmu.git@main` to get the summary.
+* The default install is the latest gangmu-sbom on PyPI (currently 0.12.0), which has the summary; for reproducible runs set `install-spec: gangmu-sbom==0.12.0`.
 * Without `compile-db` the CBOM lists what the tree contains, not what was built.
 * Algorithms are found by name; key sizes and protocols are not inspected.
 
