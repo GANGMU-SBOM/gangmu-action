@@ -38,7 +38,7 @@
 ## 注意
 
 * 后量子摘要需要 gangmu 0.9 或更高。旧版本会跳过摘要并给出警告，SBOM 和 CBOM 照常生成。
-* 目前 PyPI 上的最新版是 0.8.0；要用 0.9 的功能，先用 `install-spec: git+https://github.com/GANGMU-SBOM/gangmu.git@main`，0.9.0 发布后改回默认。
+* 默认安装 PyPI 上的最新版（目前 0.12.0），已满足上面的要求；要可复现的运行，把 `install-spec` 写成 `gangmu-sbom==0.12.0`。
 * 输入值只通过环境变量传给脚本，不会被拼进 shell 命令。
 * 识别靠名字，不分析密钥长度和协议；详见 gangmu 的 [CBOM 指南](https://github.com/GANGMU-SBOM/gangmu/blob/main/docs/guides/cbom-post-quantum.md)。
 
